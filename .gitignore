@@ -106,3 +106,7 @@ venv.bak/
 data/
 
 .idea/
+
+prediction.json
+result.json
+saved_model/
