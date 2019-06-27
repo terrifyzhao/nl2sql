@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+import requests
 
 
 class WordEmbedding(nn.Module):
@@ -38,6 +39,7 @@ class WordEmbedding(nn.Module):
                 # print ([x.encode('utf-8') for x in one_q])
                 # 问题的字转字向量
                 q_val = [self.word_emb.get(x, np.zeros(self.N_word, dtype=np.float32)) for x in one_q]
+                # q_val = self.bert_encode(''.join(one_q))
                 # print (q_val)
                 # print ("#"*60)
                 # 加上起始标记位
@@ -72,6 +74,21 @@ class WordEmbedding(nn.Module):
         # 返回问题的字向量和问题的长度
         return val_inp_var, val_len
 
+    def gen_x_batch_bert(self, q, col):
+        B = len(q)
+        val_embs = []
+        val_len = np.zeros(B, dtype=np.int64)
+        for i, (one_q, one_col) in enumerate(zip(q, col)):
+            q_val = self.bert_encode(''.join(one_q))
+            val_embs.append(q_val)
+            val_len[i] = len(one_q)
+
+        val_inp = torch.from_numpy(np.array(val_embs))
+        if self.gpu:
+            val_inp = val_inp.cuda()
+        val_inp_var = Variable(val_inp)
+        return val_inp_var, val_len
+
     def gen_col_batch(self, cols):
         ret = []
         col_len = np.zeros(len(cols), dtype=np.int64)
@@ -83,6 +100,20 @@ class WordEmbedding(nn.Module):
 
         name_inp_var, name_len = self.str_list_to_batch(names)
         return name_inp_var, name_len, col_len
+
+    def gen_col_batch_bert(self, cols):
+        name_inp_var = []
+        col_name_len = []
+        for col in cols:
+            c = '[SEP]'.join(col)
+            col_name_len.append(len(col))
+            name_inp_var.append(self.bert_encode(c))
+
+        val_inp = torch.from_numpy(np.array(name_inp_var))
+        if self.gpu:
+            val_inp = val_inp.cuda()
+        val_inp_var = Variable(val_inp)
+        return val_inp_var, col_name_len
 
     def str_list_to_batch(self, str_list):
         B = len(str_list)
@@ -120,3 +151,10 @@ class WordEmbedding(nn.Module):
             val_inp_var = Variable(val_inp)
 
         return val_inp_var, val_len
+
+    def bert_encode(self, content):
+        import json
+        res = requests.get('http://192.168.1.97:8000/bert/?content=' + content).text
+        r = json.loads(res).get('encode')
+
+        return r

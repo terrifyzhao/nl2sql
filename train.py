@@ -9,7 +9,7 @@ if __name__ == '__main__':
     parser.add_argument('--bs', type=int, default=64, help='Batch size')
     parser.add_argument('--epoch', type=int, default=300, help='Epoch number')
     parser.add_argument('--gpu', action='store_true', help='Whether use gpu to train', default=True)
-    parser.add_argument('--toy', action='store_true', help='If set, use small data for fast debugging', default=False)
+    parser.add_argument('--toy', action='store_true', help='If set, use small data for fast debugging', default=True)
     parser.add_argument('--ca', action='store_true', help='Whether use column attention', default=True)
     parser.add_argument('--train_emb', action='store_true', help='Train word embedding for SQLNet')
     parser.add_argument('--restore', action='store_true', help='Whether restore trained model')

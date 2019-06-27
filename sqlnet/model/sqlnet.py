@@ -112,11 +112,13 @@ class SQLNet(nn.Module):
             where_rela_score = None
         else:
             # 问题字向量，问题长度
-            x_emb_var, x_len = self.embed_layer.gen_x_batch(q, col)
+            # x_emb_var, x_len = self.embed_layer.gen_x_batch(q, col)
+            x_emb_var, x_len = self.embed_layer.gen_x_batch_bert(q, col)
             # 列字向量，列名的长度， 每个问题对应几个列
-            col_inp_var, col_name_len, col_len = self.embed_layer.gen_col_batch(col)
+            # col_inp_var, col_name_len, col_len = self.embed_layer.gen_col_batch(col)
+            col_inp_var, col_name_len = self.embed_layer.gen_col_batch_bert(col)
             # 对问题和列名做一个lstm的处理，把列名lstm的结果作为问题的lstm的hidden state，得到最后的分数
-            sel_num_score = self.sel_num(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num)
+            sel_num_score = self.sel_num(x_emb_var, x_len, col_inp_var, col_name_len, np.array(col_num), col_num)
             # x_emb_var: embedding of each question
             # x_len: length of each question
             # col_inp_var: embedding of each header
@@ -201,7 +203,7 @@ class SQLNet(nn.Module):
         # Evaluate the number of conditions
         # cond_num_truth = map(lambda x:x[3], truth_num)
         cond_num_truth = [x[3] for x in truth_num]
-        data = torch.from_numpy(np.array(cond_num_truth))
+        data = torch.from_numpy(np.array(cond_num_truth)).long()
         if self.gpu:
             try:
                 cond_num_truth_var = Variable(data.cuda())
@@ -236,7 +238,7 @@ class SQLNet(nn.Module):
         for b in range(len(truth_num)):
             if len(truth_num[b][5]) == 0:
                 continue
-            data = torch.from_numpy(np.array(truth_num[b][5]))
+            data = torch.from_numpy(np.array(truth_num[b][5])).long()
             if self.gpu:
                 cond_op_truth_var = Variable(data.cuda())
             else:
@@ -255,7 +257,7 @@ class SQLNet(nn.Module):
                 cond_str_truth = gt_where[b][idx]
                 if len(cond_str_truth) == 1:
                     continue
-                data = torch.from_numpy(np.array(cond_str_truth[1:]))
+                data = torch.from_numpy(np.array(cond_str_truth[1:])).long()
                 if self.gpu:
                     cond_str_truth_var = Variable(data.cuda())
                 else:
@@ -268,7 +270,7 @@ class SQLNet(nn.Module):
         # Evaluate condition relationship, and / or
         # where_rela_truth = map(lambda x:x[6], truth_num)
         where_rela_truth = [x[6] for x in truth_num]
-        data = torch.from_numpy(np.array(where_rela_truth))
+        data = torch.from_numpy(np.array(where_rela_truth)).long()
         if self.gpu:
             try:
                 where_rela_truth = Variable(data.cuda())

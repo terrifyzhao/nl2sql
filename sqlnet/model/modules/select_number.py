@@ -40,13 +40,15 @@ class SelNumPredictor(nn.Module):
                                              col_len, self.sel_num_lstm)
         # 降低一个维度
         num_col_att_val = self.sel_num_col_att(e_num_col).squeeze()
+
+        # num_col_att_val = x_emb_var
         # 把序列长度小于最长的置为一个很大的负数，softmax的值会很小
         for idx, num in enumerate(col_num):
             if num < max(col_num):
                 num_col_att_val[idx, num:] = -1000000
         num_col_att = self.softmax(num_col_att_val)
         # 对应位置置为0
-        K_num_col = (e_num_col * num_col_att.unsqueeze(2)).sum(1)
+        K_num_col = (x_emb_var * num_col_att.unsqueeze(2)).sum(1)
 
         # 过了一个全连接层然后转变了下维度，把attention后的结果作为新的state添加到问题的bilstm中作为hidden state
         sel_num_h1 = self.sel_num_col2hid1(K_num_col).view((B, 4, self.N_h // 2)).transpose(0, 1).contiguous()

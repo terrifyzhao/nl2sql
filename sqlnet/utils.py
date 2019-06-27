@@ -68,7 +68,8 @@ def to_batch_seq(sql_data, table_data, idxes, st, ed, ret_vis_data=False):
         # 问题分字
         q_seq.append([char for char in sql['question']])
         # 列名分字
-        col_seq.append([[char for char in header] for header in table_data[sql['table_id']]['header']])
+        # col_seq.append([[char for char in header] for header in table_data[sql['table_id']]['header']])
+        col_seq.append([header for header in table_data[sql['table_id']]['header']])
         # 列数量
         col_num.append(len(table_data[sql['table_id']]['header']))
         ans_seq.append(

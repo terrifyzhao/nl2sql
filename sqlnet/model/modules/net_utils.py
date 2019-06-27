@@ -10,7 +10,7 @@ def run_lstm(lstm, inp, inp_len, hidden=None):
     # 根据列名长度排序
     sort_perm = np.array(sorted(range(len(inp_len)),
                                 key=lambda k: inp_len[k], reverse=True))
-    sort_inp_len = inp_len[sort_perm]
+    sort_inp_len = np.array(inp_len)[sort_perm]
     sort_perm_inv = np.argsort(sort_perm)
     if inp.is_cuda:
         sort_perm = torch.LongTensor(sort_perm).cuda()
