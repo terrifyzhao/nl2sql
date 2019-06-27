@@ -3,13 +3,17 @@ from sqlnet.utils import *
 from sqlnet.model.sqlnet import SQLNet
 import argparse
 
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', action='store_true', help='Whether use gpu', default=True)
     parser.add_argument('--toy', action='store_true', help='Small batchsize for fast debugging.', default=False)
     parser.add_argument('--ca', action='store_true', help='Whether use column attention.', default=True)
     parser.add_argument('--train_emb', action='store_true', help='Use trained word embedding for SQLNet.')
-    parser.add_argument('--output_dir', type=str, default='result.json', help='Output path of prediction result')
+    parser.add_argument('--output_dir', type=str, default='prediction.json', help='Output path of prediction result')
     args = parser.parse_args()
 
     n_word = 300
@@ -32,8 +36,8 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load(model_path))
     print("Loaded model from %s" % model_path)
 
-    dev_acc = epoch_acc(model, batch_size, dev_sql, dev_table, dev_db)
-    print('Dev Logic Form Accuracy: %.3f, Execution Accuracy: %.3f' % (dev_acc[1], dev_acc[2]))
+    # dev_acc = epoch_acc(model, batch_size, dev_sql, dev_table, dev_db)
+    # print('Dev Logic Form Accuracy: %.3f, Execution Accuracy: %.3f' % (dev_acc[1], dev_acc[2]))
 
     print("Start to predict test set")
     predict_test(model, batch_size, test_sql, test_table, args.output_dir)

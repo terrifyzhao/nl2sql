@@ -13,7 +13,7 @@ from sqlnet.model.modules.where_relation import WhereRelationPredictor
 
 class SQLNet(nn.Module):
     def __init__(self, word_emb, N_word, N_h=100, N_depth=2,
-            gpu=False, use_ca=True, trainable_emb=False):
+                 gpu=False, use_ca=True, trainable_emb=False):
         super(SQLNet, self).__init__()
         self.use_ca = use_ca
         self.trainable_emb = trainable_emb
@@ -33,18 +33,17 @@ class SQLNet(nn.Module):
         # Predict the number of selected columns
         self.sel_num = SelNumPredictor(N_word, N_h, N_depth, use_ca=use_ca)
 
-        #Predict which columns are selected
+        # Predict which columns are selected
         self.sel_pred = SelPredictor(N_word, N_h, N_depth, self.max_tok_num, use_ca=use_ca)
 
-        #Predict aggregation functions of corresponding selected columns
+        # Predict aggregation functions of corresponding selected columns
         self.agg_pred = AggPredictor(N_word, N_h, N_depth, use_ca=use_ca)
 
-        #Predict number of conditions, condition columns, condition operations and condition values
+        # Predict number of conditions, condition columns, condition operations and condition values
         self.cond_pred = SQLNetCondPredictor(N_word, N_h, N_depth, self.max_col_num, self.max_tok_num, use_ca, gpu)
 
         # Predict condition relationship, like 'and', 'or'
         self.where_rela_pred = WhereRelationPredictor(N_word, N_h, N_depth, use_ca=use_ca)
-
 
         self.CE = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(dim=-1)
@@ -54,6 +53,11 @@ class SQLNet(nn.Module):
             self.cuda()
 
     def generate_gt_where_seq_test(self, q, gt_cond_seq):
+        """
+        :param q: 问题
+        :param gt_cond_seq: where信息
+        :return:
+        """
         ret_seq = []
         for cur_q, ans in zip(q, gt_cond_seq):
             temp_q = u"".join(cur_q)
@@ -69,43 +73,49 @@ class SQLNet(nn.Module):
                 temp_ret_seq = []
                 if item[0]:
                     temp_ret_seq.append(0)
-                    temp_ret_seq.extend(list(range(temp_q.index(item[1])+1,temp_q.index(item[1])+len(item[1])+1)))
-                    temp_ret_seq.append(len(cur_q)-1)
+                    temp_ret_seq.extend(
+                        list(range(temp_q.index(item[1]) + 1, temp_q.index(item[1]) + len(item[1]) + 1)))
+                    temp_ret_seq.append(len(cur_q) - 1)
                 else:
-                    temp_ret_seq.append([0,len(cur_q)-1])
+                    temp_ret_seq.append([0, len(cur_q) - 1])
                 record_cond.append(temp_ret_seq)
+            # where value在句子中的位置
             ret_seq.append(record_cond)
         return ret_seq
 
-    def forward(self, q, col, col_num, gt_where = None, gt_cond=None, reinforce=False, gt_sel=None, gt_sel_num=None):
+    def forward(self, q, col, col_num, gt_where=None, gt_cond=None, reinforce=False, gt_sel=None, gt_sel_num=None):
         B = len(q)
 
         sel_num_score = None
         agg_score = None
         sel_score = None
         cond_score = None
-        #Predict aggregator
+        # Predict aggregator
         if self.trainable_emb:
             x_emb_var, x_len = self.agg_embed_layer.gen_x_batch(q, col)
             col_inp_var, col_name_len, col_len = self.agg_embed_layer.gen_col_batch(col)
             max_x_len = max(x_len)
             agg_score = self.agg_pred(x_emb_var, x_len, col_inp_var,
-                    col_name_len, col_len, col_num, gt_sel=gt_sel)
+                                      col_name_len, col_len, col_num, gt_sel=gt_sel)
 
             x_emb_var, x_len = self.sel_embed_layer.gen_x_batch(q, col)
             col_inp_var, col_name_len, col_len = self.sel_embed_layer.gen_col_batch(col)
             max_x_len = max(x_len)
             sel_score = self.sel_pred(x_emb_var, x_len, col_inp_var,
-                    col_name_len, col_len, col_num)
+                                      col_name_len, col_len, col_num)
 
             x_emb_var, x_len = self.cond_embed_layer.gen_x_batch(q, col)
             col_inp_var, col_name_len, col_len = self.cond_embed_layer.gen_col_batch(col)
             max_x_len = max(x_len)
-            cond_score = self.cond_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num, gt_where, gt_cond, reinforce=reinforce)
+            cond_score = self.cond_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num, gt_where,
+                                        gt_cond, reinforce=reinforce)
             where_rela_score = None
         else:
+            # 问题字向量，问题长度
             x_emb_var, x_len = self.embed_layer.gen_x_batch(q, col)
+            # 列字向量，列名的长度， 每个问题对应几个列
             col_inp_var, col_name_len, col_len = self.embed_layer.gen_col_batch(col)
+            # 对问题和列名做一个lstm的处理，把列名lstm的结果作为问题的lstm的hidden state，得到最后的分数
             sel_num_score = self.sel_num(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num)
             # x_emb_var: embedding of each question
             # x_len: length of each question
@@ -113,10 +123,13 @@ class SQLNet(nn.Module):
             # col_name_len: length of each header
             # col_len: number of headers in each table, array type
             # col_num: number of headers in each table, list type
+
+            # select数量
             if gt_sel_num:
                 pr_sel_num = gt_sel_num
             else:
                 pr_sel_num = np.argmax(sel_num_score.data.cpu().numpy(), axis=1)
+            # 列名
             sel_score = self.sel_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num)
 
             if gt_sel:
@@ -125,11 +138,15 @@ class SQLNet(nn.Module):
                 num = np.argmax(sel_num_score.data.cpu().numpy(), axis=1)
                 sel = sel_score.data.cpu().numpy()
                 pr_sel = [list(np.argsort(-sel[b])[:num[b]]) for b in range(len(num))]
-            agg_score = self.agg_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num, gt_sel=pr_sel, gt_sel_num=pr_sel_num)
-
+            # agg
+            agg_score = self.agg_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num, gt_sel=pr_sel,
+                                      gt_sel_num=pr_sel_num)
+            # relation
             where_rela_score = self.where_rela_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num)
 
-            cond_score = self.cond_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num, gt_where, gt_cond, reinforce=reinforce)
+            # where
+            cond_score = self.cond_pred(x_emb_var, x_len, col_inp_var, col_name_len, col_len, col_num, gt_where,
+                                        gt_cond, reinforce=reinforce)
 
         return (sel_num_score, sel_score, agg_score, cond_score, where_rela_score)
 
@@ -142,7 +159,7 @@ class SQLNet(nn.Module):
         # Evaluate select number
         # sel_num_truth = map(lambda x:x[0], truth_num)
         sel_num_truth = [x[0] for x in truth_num]
-        sel_num_truth = torch.from_numpy(np.array(sel_num_truth))
+        sel_num_truth = torch.from_numpy(np.array(sel_num_truth)).long()
         if self.gpu:
             sel_num_truth = Variable(sel_num_truth.cuda())
         else:
@@ -151,7 +168,8 @@ class SQLNet(nn.Module):
 
         # Evaluate select column
         T = len(sel_score[0])
-        truth_prob = np.zeros((B,T), dtype=np.float32)
+        truth_prob = np.zeros((B, T), dtype=np.float32)
+        # 把y做一个one-hot的处理
         for b in range(B):
             truth_prob[b][list(truth_num[b][1])] = 1
         data = torch.from_numpy(truth_prob)
@@ -161,15 +179,16 @@ class SQLNet(nn.Module):
             sel_col_truth_var = Variable(data)
         sigm = nn.Sigmoid()
         sel_col_prob = sigm(sel_score)
+        # 自定义损失函数
         bce_loss = -torch.mean(
-            3*(sel_col_truth_var * torch.log(sel_col_prob+1e-10)) +
-            (1-sel_col_truth_var) * torch.log(1-sel_col_prob+1e-10)
+            3 * (sel_col_truth_var * torch.log(sel_col_prob + 1e-10)) +
+            (1 - sel_col_truth_var) * torch.log(1 - sel_col_prob + 1e-10)
         )
         loss += bce_loss
 
         # Evaluate select aggregation
         for b in range(len(truth_num)):
-            data = torch.from_numpy(np.array(truth_num[b][2]))
+            data = torch.from_numpy(np.array(truth_num[b][2])).long()
             if self.gpu:
                 sel_agg_truth_var = Variable(data.cuda())
             else:
@@ -187,8 +206,8 @@ class SQLNet(nn.Module):
             try:
                 cond_num_truth_var = Variable(data.cuda())
             except:
-                print ("cond_num_truth_var error")
-                print (data)
+                print("cond_num_truth_var error")
+                print(data)
                 exit(0)
         else:
             cond_num_truth_var = Variable(data)
@@ -209,8 +228,8 @@ class SQLNet(nn.Module):
         sigm = nn.Sigmoid()
         cond_col_prob = sigm(cond_col_score)
         bce_loss = -torch.mean(
-            3*(cond_col_truth_var * torch.log(cond_col_prob+1e-10)) +
-            (1-cond_col_truth_var) * torch.log(1-cond_col_prob+1e-10) )
+            3 * (cond_col_truth_var * torch.log(cond_col_prob + 1e-10)) +
+            (1 - cond_col_truth_var) * torch.log(1 - cond_col_prob + 1e-10))
         loss += bce_loss
 
         # Evaluate the operator of conditions
@@ -226,11 +245,11 @@ class SQLNet(nn.Module):
             try:
                 loss += (self.CE(cond_op_pred, cond_op_truth_var) / len(truth_num))
             except:
-                print (cond_op_pred)
-                print (cond_op_truth_var)
+                print(cond_op_pred)
+                print(cond_op_truth_var)
                 exit(0)
 
-        #Evaluate the strings of conditions
+        # Evaluate the value of conditions
         for b in range(len(gt_where)):
             for idx in range(len(gt_where[b])):
                 cond_str_truth = gt_where[b][idx]
@@ -241,10 +260,10 @@ class SQLNet(nn.Module):
                     cond_str_truth_var = Variable(data.cuda())
                 else:
                     cond_str_truth_var = Variable(data)
-                str_end = len(cond_str_truth)-1
+                str_end = len(cond_str_truth) - 1
                 cond_str_pred = cond_str_score[b, idx, :str_end]
                 loss += (self.CE(cond_str_pred, cond_str_truth_var) \
-                        / (len(gt_where) * len(gt_where[b])))
+                         / (len(gt_where) * len(gt_where[b])))
 
         # Evaluate condition relationship, and / or
         # where_rela_truth = map(lambda x:x[6], truth_num)
@@ -254,8 +273,8 @@ class SQLNet(nn.Module):
             try:
                 where_rela_truth = Variable(data.cuda())
             except:
-                print ("where_rela_truth error")
-                print (data)
+                print("where_rela_truth error")
+                print(data)
                 exit(0)
         else:
             where_rela_truth = Variable(data)
@@ -269,7 +288,7 @@ class SQLNet(nn.Module):
             cond_str = []
             for cond in conds:
                 cond_str.append(header[cond[0]] + ' ' +
-                    self.COND_OPS[cond[1]] + ' ' + str(cond[2]).lower())
+                                self.COND_OPS[cond[1]] + ' ' + str(cond[2]).lower())
             return 'WHERE ' + ' AND '.join(cond_str)
 
         tot_err = sel_num_err = agg_err = sel_err = 0.0
@@ -287,8 +306,8 @@ class SQLNet(nn.Module):
                 good = False
                 sel_num_err += 1
 
-            pred_sel_dict = {k:v for k,v in zip(list(sel_pred), list(agg_pred))}
-            gt_sel_dict = {k:v for k,v in zip(sel_gt, agg_gt)}
+            pred_sel_dict = {k: v for k, v in zip(list(sel_pred), list(agg_pred))}
+            gt_sel_dict = {k: v for k, v in zip(sel_gt, agg_gt)}
             if set(sel_pred) != set(sel_gt):
                 good = False
                 sel_err += 1
@@ -314,25 +333,25 @@ class SQLNet(nn.Module):
 
                 if set(cond_op_pred.keys()) != set(cond_op_gt.keys()):
                     cond_col_err += 1
-                    good=False
+                    good = False
 
                 where_op_pred = [cond_op_pred[x] for x in sorted(cond_op_pred.keys())]
                 where_op_gt = [cond_op_gt[x] for x in sorted(cond_op_gt.keys())]
                 if where_op_pred != where_op_gt:
                     cond_op_err += 1
-                    good=False
+                    good = False
 
                 where_val_pred = [cond_val_pred[x] for x in sorted(cond_val_pred.keys())]
                 where_val_gt = [cond_val_gt[x] for x in sorted(cond_val_gt.keys())]
                 if where_val_pred != where_val_gt:
                     cond_val_err += 1
-                    good=False
+                    good = False
 
             if not good:
                 tot_err += 1
 
-        return np.array((sel_num_err, sel_err, agg_err, cond_num_err, cond_col_err, cond_op_err, cond_val_err , cond_rela_err)), tot_err
-
+        return np.array((sel_num_err, sel_err, agg_err, cond_num_err, cond_col_err, cond_op_err, cond_val_err,
+                         cond_rela_err)), tot_err
 
     def gen_query(self, score, q, col, raw_q, reinforce=False, verbose=False):
         """
@@ -342,16 +361,17 @@ class SQLNet(nn.Module):
         :param raw_q: original question sequence
         :return:
         """
+
         def merge_tokens(tok_list, raw_tok_str):
-            tok_str = raw_tok_str# .lower()
+            tok_str = raw_tok_str  # .lower()
             alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789$('
-            special = {'-LRB-':'(',
-                    '-RRB-':')',
-                    '-LSB-':'[',
-                    '-RSB-':']',
-                    '``':'"',
-                    '\'\'':'"',
-                    '--':u'\u2013'}
+            special = {'-LRB-': '(',
+                       '-RRB-': ')',
+                       '-LSB-': '[',
+                       '-RSB-': ']',
+                       '``': '"',
+                       '\'\'': '"',
+                       '--': u'\u2013'}
             ret = ''
             double_quote_appear = 0
             for raw_tok in tok_list:
@@ -385,27 +405,27 @@ class SQLNet(nn.Module):
         where_rela_score = where_rela_score.data.cpu().numpy()
         ret_queries = []
         B = len(agg_score)
-        cond_num_score,cond_col_score,cond_op_score,cond_str_score =\
+        cond_num_score, cond_col_score, cond_op_score, cond_str_score = \
             [x.data.cpu().numpy() for x in cond_score]
         for b in range(B):
             cur_query = {}
             cur_query['sel'] = []
             cur_query['agg'] = []
-            sel_num = np.argmax(sel_num_score[b])
+            sel_num = int(np.argmax(sel_num_score[b]))
             max_col_idxes = np.argsort(-sel_score[b])[:sel_num]
             # find the most-probable columns' indexes
             max_agg_idxes = np.argsort(-agg_score[b])[:sel_num]
             cur_query['sel'].extend([int(i) for i in max_col_idxes])
-            cur_query['agg'].extend([i[0] for i in max_agg_idxes])
-            cur_query['cond_conn_op'] = np.argmax(where_rela_score[b])
+            cur_query['agg'].extend([int(i[0]) for i in max_agg_idxes])
+            cur_query['cond_conn_op'] = int(np.argmax(where_rela_score[b]))
             cur_query['conds'] = []
             cond_num = np.argmax(cond_num_score[b])
             all_toks = ['<BEG>'] + q[b] + ['<END>']
             max_idxes = np.argsort(-cond_col_score[b])[:cond_num]
             for idx in range(cond_num):
                 cur_cond = []
-                cur_cond.append(max_idxes[idx]) # where-col
-                cur_cond.append(np.argmax(cond_op_score[b][idx])) # where-op
+                cur_cond.append(int(max_idxes[idx]))  # where-col
+                cur_cond.append(int(np.argmax(cond_op_score[b][idx])))  # where-op
                 cur_cond_str_toks = []
                 for str_score in cond_str_score[b][idx]:
                     str_tok = np.argmax(str_score[:len(all_toks)])

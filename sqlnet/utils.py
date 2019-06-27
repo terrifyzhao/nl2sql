@@ -61,22 +61,36 @@ def to_batch_seq(sql_data, table_data, idxes, st, ed, ret_vis_data=False):
     for i in range(st, ed):
         sql = sql_data[idxes[i]]
         sel_num = len(sql['sql']['sel'])
+        # select数量
         sel_num_seq.append(sel_num)
+        # where数量
         conds_num = len(sql['sql']['conds'])
+        # 问题分字
         q_seq.append([char for char in sql['question']])
+        # 列名分字
         col_seq.append([[char for char in header] for header in table_data[sql['table_id']]['header']])
+        # 列数量
         col_num.append(len(table_data[sql['table_id']]['header']))
         ans_seq.append(
             (
+                # agg个数
                 len(sql['sql']['agg']),
+                # 列名id
                 sql['sql']['sel'],
+                # agg
                 sql['sql']['agg'],
+                # where个数
                 conds_num,
+                # where column
                 tuple(x[0] for x in sql['sql']['conds']),
+                # where op
                 tuple(x[1] for x in sql['sql']['conds']),
+                # where rela
                 sql['sql']['cond_conn_op'],
             ))
+        # where全内容
         gt_cond_seq.append(sql['sql']['conds'])
+        # 问题和问题包含的表的列名
         vis_seq.append((sql['question'], table_data[sql['table_id']]['header']))
     if ret_vis_data:
         return q_seq, sel_num_seq, col_seq, col_num, ans_seq, gt_cond_seq, vis_seq
@@ -127,8 +141,9 @@ def epoch_train(model, optimizer, batch_size, sql_data, table_data):
         # gt_cond_seq: ground truth of conds
         gt_where_seq = model.generate_gt_where_seq_test(q_seq, gt_cond_seq)
         gt_sel_seq = [x[1] for x in ans_seq]
+        #                    问题，   列名     列数     where的value位置        where信息            列id
         score = model.forward(q_seq, col_seq, col_num, gt_where=gt_where_seq, gt_cond=gt_cond_seq, gt_sel=gt_sel_seq,
-                              gt_sel_num=gt_sel_num)
+                              gt_sel_num=gt_sel_num)  # select数量
         # sel_num_score, sel_col_score, sel_agg_score, cond_score, cond_rela_score
 
         # compute loss
@@ -143,7 +158,7 @@ def epoch_train(model, optimizer, batch_size, sql_data, table_data):
 def predict_test(model, batch_size, sql_data, table_data, output_path):
     model.eval()
     perm = list(range(len(sql_data)))
-    fw = open(output_path, 'w')
+    fw = open(output_path, 'w', encoding='utf-8')
     for st in tqdm(range(len(sql_data) // batch_size + 1)):
         ed = (st + 1) * batch_size if (st + 1) * batch_size < len(perm) else len(perm)
         st = st * batch_size
@@ -151,7 +166,7 @@ def predict_test(model, batch_size, sql_data, table_data, output_path):
         score = model.forward(q_seq, col_seq, col_num)
         sql_preds = model.gen_query(score, q_seq, col_seq, raw_q_seq)
         for sql_pred in sql_preds:
-            fw.writelines(json.dumps(sql_pred, ensure_ascii=False).encode('utf-8') + '\n')
+            fw.writelines(json.dumps(sql_pred, ensure_ascii=False) + '\n')
     fw.close()
 
 

@@ -36,13 +36,17 @@ class WordEmbedding(nn.Module):
             else:
                 # print (i)
                 # print ([x.encode('utf-8') for x in one_q])
+                # 问题的字转字向量
                 q_val = [self.word_emb.get(x, np.zeros(self.N_word, dtype=np.float32)) for x in one_q]
                 # print (q_val)
                 # print ("#"*60)
+                # 加上起始标记位
                 val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [
                     np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
             # exit(0)
+            # 问题长度
             val_len[i] = len(q_val) + 2
+        # 最长的问题长度
         max_len = max(val_len)
 
         if self.trainable:
@@ -56,6 +60,7 @@ class WordEmbedding(nn.Module):
             val_tok_var = Variable(val_tok)
             val_inp_var = self.embedding(val_tok_var)
         else:
+            # 因为每个序列长度不一样，所以这里把长度改成一样长的
             val_emb_array = np.zeros((B, max_len, self.N_word), dtype=np.float32)
             for i in range(B):
                 for t in range(len(val_embs[i])):
@@ -64,6 +69,7 @@ class WordEmbedding(nn.Module):
             if self.gpu:
                 val_inp = val_inp.cuda()
             val_inp_var = Variable(val_inp)
+        # 返回问题的字向量和问题的长度
         return val_inp_var, val_len
 
     def gen_col_batch(self, cols):
